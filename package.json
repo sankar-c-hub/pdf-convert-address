@@ -1,7 +1,7 @@
 {
   "name": "cr-fashions-shipping",
   "version": "5.0.0",
-  "description": "CR Fashions shipping manager — Supabase direct connection",
+  "description": "CR Fashions shipping manager",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -11,6 +11,7 @@
     "nodemon": "^3.0.1"
   },
   "dependencies": {
+    "dotenv": "^17.3.1",
     "express": "^4.18.2",
     "multer": "^2.1.1",
     "pdfkit": "^0.14.0",
