@@ -768,7 +768,7 @@
         </div>
       </div>
       <div class="btn-row">
-        <button class="btn btn-primary" id="submitBtn" onclick="submitOrder()">✓ Save Order to Excel</button>
+        <button class="btn btn-primary" id="submitBtn" onclick="submitOrder()">Save Order</button>
         <button class="btn btn-outline" onclick="clearForm()">↺ Clear Form</button>
       </div>
     </div>
@@ -830,7 +830,11 @@
               <h3>Orders <span id="orderCount" class="badge">0</span></h3>
             </div>
             <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
-              <button class="btn btn-outline" onclick="downloadExcel()">⬇ Excel</button>
+              <button class="btn btn-outline" onclick="downloadJSON()">⬇ JSON</button>
+              <label class="btn btn-outline" style="cursor:pointer; margin:0;" title="Upload JSON to import orders">
+                ⬆ Upload JSON
+                <input type="file" id="jsonUpload" accept=".json" style="display:none" onchange="uploadJSON(this)" />
+              </label>
               <button class="btn btn-danger" id="pdfBtn" onclick="generatePDF()" disabled>🖨 Generate PDF
                 Labels</button>
             </div>
@@ -998,7 +1002,7 @@
         showToast('Network error: ' + err.message, 'error');
       } finally {
         btn.disabled = false;
-        btn.innerHTML = '✓ Save Order to Excel';
+        btn.innerHTML = 'Save Order';
       }
     }
 
@@ -1085,11 +1089,12 @@
         <td>${esc(o.fromName || 'CR FASHIONS')}</td>
         <td>${esc(o.date || '')}</td>
         <td>${esc(o.time || '')}</td>
+        <td><button class="btn btn-outline" style="padding:.35rem .75rem;font-size:.78rem;" onclick="downloadSinglePDF(${o.id})">🖨 PDF</button></td>
       </tr>`).join('');
       container.innerHTML = `
       <div class="table-wrap">
         <table>
-          <thead><tr><th>#</th><th>To Name</th><th>Address</th><th>From</th><th>Date</th><th>Time</th></tr></thead>
+          <thead><tr><th>#</th><th>To Name</th><th>Address</th><th>From</th><th>Date</th><th>Time</th><th>Label</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>`;
@@ -1113,9 +1118,43 @@
       showToast('Generating PDF...', 'info');
     }
 
-    function downloadExcel() {
-      window.open(`/download_excel?adminToken=${adminToken}`, '_blank');
-      showToast('Downloading Excel...', 'info');
+    function downloadJSON() {
+      window.open(`/download_json?adminToken=${adminToken}`, '_blank');
+      showToast('Downloading JSON...', 'info');
+    }
+
+    async function uploadJSON(input) {
+      const file = input.files[0];
+      if (!file) return;
+      if (!confirm(`Import all orders from "${file.name}"? They will be appended to existing data.`)) {
+        input.value = '';
+        return;
+      }
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        const res = await fetch('/upload_json', {
+          method: 'POST',
+          headers: { 'x-admin-token': adminToken },
+          body: formData
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`✓ Imported! ${data.added} order(s) added. Total: ${data.total}`, 'success', 5000);
+          loadStats();
+        } else {
+          showToast(data.error || 'Upload failed', 'error');
+        }
+      } catch (err) {
+        showToast('Upload error: ' + err.message, 'error');
+      } finally {
+        input.value = '';
+      }
+    }
+
+    function downloadSinglePDF(orderId) {
+      window.open(`/generate_label_single?id=${orderId}&adminToken=${adminToken}`, '_blank');
+      showToast('Downloading label PDF...', 'info');
     }
 
     // ── INIT ─────────────────────────────────────────────────────────────────
