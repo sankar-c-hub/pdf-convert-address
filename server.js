@@ -269,6 +269,70 @@ app.get("/generate_labels", requireAdmin, async (req, res) => {
   }
 });
 
+// ── CRUD: UPDATE ORDER ────────────────────────────────────────────────────────
+app.put("/update_order", requireAdmin, async (req, res) => {
+  try {
+    const { id, toName, toAddress } = req.body;
+    if (!id || !toName || !toAddress)
+      return res.status(400).json({ error: "id, toName and toAddress are required" });
+
+    const { orders, sha } = await readOrders();
+    const idx = orders.findIndex((o) => String(o.id) === String(id));
+    if (idx === -1) return res.status(404).json({ error: "Order not found" });
+
+    orders[idx].toName = toName;
+    orders[idx].toAddress = toAddress;
+
+    await writeOrders(orders, sha);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("update_order error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── CRUD: DELETE SINGLE ORDER ─────────────────────────────────────────────────
+app.delete("/delete_order", requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.query;
+    if (!id) return res.status(400).json({ error: "id parameter required" });
+
+    const { orders, sha } = await readOrders();
+    const filtered = orders.filter((o) => String(o.id) !== String(id));
+    if (filtered.length === orders.length)
+      return res.status(404).json({ error: "Order not found" });
+
+    // Re-number IDs sequentially
+    const renumbered = filtered.map((o, i) => ({ ...o, id: i + 1 }));
+    await writeOrders(renumbered, sha);
+    res.json({ success: true, remaining: renumbered.length });
+  } catch (err) {
+    console.error("delete_order error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── CRUD: DELETE ALL ORDERS BY DATE ──────────────────────────────────────────
+app.delete("/delete_orders_by_date", requireAdmin, async (req, res) => {
+  try {
+    const { date } = req.query;
+    if (!date) return res.status(400).json({ error: "date parameter required" });
+
+    const { orders, sha } = await readOrders();
+    const kept = orders.filter((o) => o.date !== date);
+    const deleted = orders.length - kept.length;
+
+    if (deleted === 0) return res.status(404).json({ error: `No orders found for ${date}` });
+
+    const renumbered = kept.map((o, i) => ({ ...o, id: i + 1 }));
+    await writeOrders(renumbered, sha);
+    res.json({ success: true, deleted, remaining: renumbered.length });
+  } catch (err) {
+    console.error("delete_orders_by_date error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Generate PDF label for a single order by id
 app.get("/generate_label_single", requireAdmin, async (req, res) => {
   try {
