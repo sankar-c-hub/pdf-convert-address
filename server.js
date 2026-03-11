@@ -20,7 +20,7 @@ app.use(express.static(path.join(__dirname, "public")));
 //   GITHUB_REPO   = cr-fashions-data           ← a private repo you create
 //   GITHUB_FILE   = orders.json                ← file path inside that repo
 //
-const GH_TOKEN = process.env.GH_TOKEN || "";
+const GH_TOKEN = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
 const GH_OWNER = "sankar-c-hub";
 const GH_REPO  = "cr-fashions-data";
 const GH_FILE  = "data/orders.json";
