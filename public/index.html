@@ -835,8 +835,9 @@
                 ⬆ Upload JSON
                 <input type="file" id="jsonUpload" accept=".json" style="display:none" onchange="uploadJSON(this)" />
               </label>
-              <button class="btn btn-danger" id="pdfBtn" onclick="generatePDF()" disabled>🖨 Generate PDF
-                Labels</button>
+              <button class="btn btn-danger" id="deleteByDateBtn" onclick="deleteOrdersByDate()" disabled>🗑 Delete
+                Date</button>
+              <button class="btn btn-danger" id="pdfBtn" onclick="generatePDF()" disabled>🖨 Generate PDF</button>
             </div>
           </div>
           <div class="card-body" style="padding:0;">
@@ -848,6 +849,27 @@
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ EDIT ORDER MODAL ═══ -->
+  <div class="modal-overlay" id="editModal">
+    <div class="modal" style="max-width:480px;">
+      <div class="modal-icon">✏️</div>
+      <h2>Edit Order</h2>
+      <p>Update the recipient details below.</p>
+      <input type="hidden" id="editOrderId" />
+      <label for="editToName">Recipient Name *</label>
+      <input type="text" id="editToName" placeholder="Recipient full name" />
+      <label for="editToAddress">Full Address *</label>
+      <textarea id="editToAddress"
+        style="width:100%;padding:.75rem 1rem;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:.95rem;background:var(--cream);outline:none;resize:vertical;min-height:100px;"
+        placeholder="Address..."></textarea>
+      <div class="modal-error" id="editError">Name and address are required.</div>
+      <div class="modal-btn-row" style="margin-top:1rem;">
+        <button class="btn btn-outline" onclick="closeEditModal()">Cancel</button>
+        <button class="btn btn-primary" id="saveEditBtn" onclick="saveEdit()">💾 Save Changes</button>
       </div>
     </div>
   </div>
@@ -1065,6 +1087,7 @@
         renderTable(data);
         document.getElementById('statFiltered').textContent = data.length;
         document.getElementById('pdfBtn').disabled = data.length === 0;
+        document.getElementById('deleteByDateBtn').disabled = data.length === 0 || !currentDateParam;
         showToast(data.length === 0 ? 'No orders found' : `${data.length} order(s) loaded`, data.length === 0 ? 'info' : 'success');
       } catch (err) {
         showToast('Error: ' + err.message, 'error');
@@ -1085,16 +1108,20 @@
       <tr>
         <td><span class="badge">#${i + 1}</span></td>
         <td><strong>${esc(o.toName)}</strong></td>
-        <td style="max-width:300px;word-break:break-word;">${esc(o.toAddress)}</td>
+        <td style="max-width:260px;word-break:break-word;">${esc(o.toAddress)}</td>
         <td>${esc(o.fromName || 'CR FASHIONS')}</td>
         <td>${esc(o.date || '')}</td>
         <td>${esc(o.time || '')}</td>
-        <td><button class="btn btn-outline" style="padding:.35rem .75rem;font-size:.78rem;" onclick="downloadSinglePDF(${o.id})">🖨 PDF</button></td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-outline" style="padding:.3rem .6rem;font-size:.76rem;" onclick="downloadSinglePDF(${o.id})">🖨</button>
+          <button class="btn btn-outline" style="padding:.3rem .6rem;font-size:.76rem;" onclick="openEditModal(${o.id})">✏️</button>
+          <button class="btn btn-danger" style="padding:.3rem .6rem;font-size:.76rem;" onclick="deleteOrder(${o.id})">🗑</button>
+        </td>
       </tr>`).join('');
       container.innerHTML = `
       <div class="table-wrap">
         <table>
-          <thead><tr><th>#</th><th>To Name</th><th>Address</th><th>From</th><th>Date</th><th>Time</th><th>Label</th></tr></thead>
+          <thead><tr><th>#</th><th>To Name</th><th>Address</th><th>From</th><th>Date</th><th>Time</th><th>Actions</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>`;
@@ -1155,6 +1182,114 @@
     function downloadSinglePDF(orderId) {
       window.open(`/generate_label_single?id=${orderId}&adminToken=${adminToken}`, '_blank');
       showToast('Downloading label PDF...', 'info');
+    }
+
+    // ── CRUD: DELETE SINGLE ORDER ────────────────────────────────────────────
+    async function deleteOrder(id) {
+      const order = currentOrders.find(o => o.id === id);
+      if (!order) return;
+      if (!confirm(`Delete order for "${order.toName}"? This cannot be undone.`)) return;
+      try {
+        const res = await fetch(`/delete_order?id=${id}`, {
+          method: 'DELETE',
+          headers: adminHeaders()
+        });
+        if (res.status === 403) { showToast('Session expired.', 'error'); adminLogout(); return; }
+        const data = await res.json();
+        if (data.success) {
+          showToast(`✓ Order #${id} deleted`, 'success');
+          currentOrders = currentOrders.filter(o => o.id !== id);
+          renderTable(currentOrders);
+          document.getElementById('statFiltered').textContent = currentOrders.length;
+          document.getElementById('pdfBtn').disabled = currentOrders.length === 0;
+          document.getElementById('deleteByDateBtn').disabled = currentOrders.length === 0 || !currentDateParam;
+          loadStats();
+        } else {
+          showToast(data.error || 'Delete failed', 'error');
+        }
+      } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+      }
+    }
+
+    // ── CRUD: DELETE ALL ORDERS BY DATE ──────────────────────────────────────
+    async function deleteOrdersByDate() {
+      if (!currentDateParam) { showToast('No date selected', 'error'); return; }
+      if (!confirm(`Delete ALL ${currentOrders.length} order(s) for ${currentDateParam}? This cannot be undone.`)) return;
+      try {
+        const res = await fetch(`/delete_orders_by_date?date=${currentDateParam}`, {
+          method: 'DELETE',
+          headers: adminHeaders()
+        });
+        if (res.status === 403) { showToast('Session expired.', 'error'); adminLogout(); return; }
+        const data = await res.json();
+        if (data.success) {
+          showToast(`✓ Deleted ${data.deleted} order(s) for ${currentDateParam}`, 'success', 5000);
+          currentOrders = [];
+          renderTable([]);
+          document.getElementById('statFiltered').textContent = 0;
+          document.getElementById('pdfBtn').disabled = true;
+          document.getElementById('deleteByDateBtn').disabled = true;
+          loadStats();
+        } else {
+          showToast(data.error || 'Delete failed', 'error');
+        }
+      } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+      }
+    }
+
+    // ── CRUD: EDIT MODAL ─────────────────────────────────────────────────────
+    function openEditModal(id) {
+      const order = currentOrders.find(o => o.id === id);
+      if (!order) return;
+      document.getElementById('editOrderId').value = id;
+      document.getElementById('editToName').value = order.toName || '';
+      document.getElementById('editToAddress').value = order.toAddress || '';
+      document.getElementById('editError').classList.remove('show');
+      document.getElementById('editModal').classList.add('open');
+      setTimeout(() => document.getElementById('editToName').focus(), 100);
+    }
+
+    function closeEditModal() {
+      document.getElementById('editModal').classList.remove('open');
+    }
+
+    async function saveEdit() {
+      const id = parseInt(document.getElementById('editOrderId').value);
+      const toName = document.getElementById('editToName').value.trim();
+      const toAddress = document.getElementById('editToAddress').value.trim();
+      if (!toName || !toAddress) {
+        document.getElementById('editError').classList.add('show');
+        return;
+      }
+      const btn = document.getElementById('saveEditBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Saving...';
+      try {
+        const res = await fetch('/update_order', {
+          method: 'PUT',
+          headers: { ...adminHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, toName, toAddress })
+        });
+        if (res.status === 403) { showToast('Session expired.', 'error'); adminLogout(); return; }
+        const data = await res.json();
+        if (data.success) {
+          // Update in local state
+          const idx = currentOrders.findIndex(o => o.id === id);
+          if (idx !== -1) { currentOrders[idx].toName = toName; currentOrders[idx].toAddress = toAddress; }
+          renderTable(currentOrders);
+          closeEditModal();
+          showToast('✓ Order updated successfully', 'success');
+        } else {
+          showToast(data.error || 'Update failed', 'error');
+        }
+      } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '💾 Save Changes';
+      }
     }
 
     // ── INIT ─────────────────────────────────────────────────────────────────
